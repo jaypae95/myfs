@@ -395,8 +395,10 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
   res = pread(fd, buf, size, offset);
   if (res == -1)
     res = -errno;
-  else if(res == 0)
+  else if(res == 0) {
+	close(fd);
 	break;
+	}
 
   close(fd);
   }
@@ -425,7 +427,10 @@ static int xmp_write(const char *path, const char *buf, size_t size,
     res = pwrite(fd, buf, size, offset);
     if (res == -1)
       res = -errno;
-
+    else if(res == 0) {
+	  close(fd);
+	  break;
+	}
     close(fd);
   }
 
