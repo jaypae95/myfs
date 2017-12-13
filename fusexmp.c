@@ -55,14 +55,16 @@ static struct {
 
 static int xmp_getattr(const char *path, struct stat *stbuf)
 {
-  char fullpath[PATH_MAX];
-	int res;
+  char fullpathA[PATH_MAX];
+  char fullpathB[PATH_MAX];
+	int resA, resB;
 
-  sprintf(fullpath, "%s%s",
-      rand() % 2 == 0 ? global_context.driveA : global_context.driveB, path);
+  sprintf(fullpathA, "%s%s", global_context.driveA, path);
+  sprintf(fullpathB, "%s%s", global_context.driveB, path);
+	resA = lstat(fullpathA, stbuf);
+	resB = lstat(fullpathB, stbuf);
 
-	res = lstat(fullpath, stbuf);
-	if (res == -1)
+	if(resA == -1 || resB == -1)
 		return -errno;
 
 	return 0;
@@ -370,12 +372,21 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
     struct fuse_file_info *fi)
 {
-  char fullpath[PATH_MAX];
+  char fullpathA[PATH_MAX];
+  char fullpathB[PATH_MAX];
   int fd;
   int res;
 
-  sprintf(fullpath, "%s%s",
-      rand() % 2 == 0 ? global_context.driveA : global_context.driveB, path);
+  sprintf(fullpathA, "%s%s", global_context.driveA, path);
+  sprintf(fullpathB, "%s%s", global_context.driveB, path); 
+ 
+  
+  for(int i = 0; i < 2; i++) {
+  const char * fullpath;
+  if (i == 0) 
+	fullpath = fullpathA;
+  else if(i == 1) 
+	fullpath = fullpathB;
   (void) fi;
   fd = open(fullpath, O_RDONLY);
   if (fd == -1)
@@ -384,8 +395,11 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
   res = pread(fd, buf, size, offset);
   if (res == -1)
     res = -errno;
+  else if(res == 0)
+	break;
 
   close(fd);
+  }
   return res;
 }
 
