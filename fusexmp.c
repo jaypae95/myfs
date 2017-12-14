@@ -58,14 +58,22 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
   char fullpathA[PATH_MAX];
   char fullpathB[PATH_MAX];
 	int resA, resB;
+    struct stat stA = {0,};
+    struct stat stB = {0,};
 
   sprintf(fullpathA, "%s%s", global_context.driveA, path);
   sprintf(fullpathB, "%s%s", global_context.driveB, path);
-	resA = lstat(fullpathA, stbuf);
-	resB = lstat(fullpathB, stbuf);
+	resA = lstat(fullpathA, &stA);
+	resB = lstat(fullpathB, &stB);
+
+       
 
 	if(resA == -1 || resB == -1)
 		return -errno;
+	 if(S_ISREG(stA.st_mode))
+		stA.st_size += stB.st_size;
+
+    *stbuf = stA;	
 
 	return 0;
 }
@@ -376,33 +384,39 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
   char fullpathB[PATH_MAX];
   int fd;
   int res;
-
+  int readbytes = 0;
+  int ofst = 0;
   sprintf(fullpathA, "%s%s", global_context.driveA, path);
   sprintf(fullpathB, "%s%s", global_context.driveB, path); 
  
-  
-  for(int i = 0; i < 2; i++) {
+  int i = 0;
+
+  while(1) {
   const char * fullpath;
-  if (i == 0) 
+  if (i % 2 == 0) 
 	fullpath = fullpathA;
-  else if(i == 1) 
+  else if(i % 2 == 1) 
 	fullpath = fullpathB;
   (void) fi;
   fd = open(fullpath, O_RDONLY);
   if (fd == -1)
     return -errno;
 
-  res = pread(fd, buf, size, offset);
+  res = pread(fd, buf+readbytes, 512, ofst);
   if (res == -1)
     res = -errno;
   else if(res == 0) {
-	close(fd);
 	break;
 	}
+  readbytes += res;
 
   close(fd);
+  if (i % 2 == 1)
+	ofst += 512;
+	
+  i++;
   }
-  return res;
+  return readbytes;
 }
 
 static int xmp_write(const char *path, const char *buf, size_t size,
@@ -418,16 +432,20 @@ static int xmp_write(const char *path, const char *buf, size_t size,
 
   sprintf(fullpaths[0], "%s%s", global_context.driveA, path);
   sprintf(fullpaths[1], "%s%s", global_context.driveB, path);
+int i = 0;
+int ofst = 0;
+  for (int written = size; written > 0; written -= blocksize) {
+	written  < 512 ? (blocksize = written) : (blocksize = 512);
+    const char* fullpath = fullpaths[i%2];
 
-  for (int written = size, int i = 0; written > 0; written = blocksize, i++) {
-	written  < 512 ? (blocksize = written) : (blocksize = 512)
-    const char* fullpath = fullpaths[i];
+    if(written < 0)
+		break;
 
     fd = open(fullpath, O_WRONLY);
     if (fd == -1)
       return -errno;
 
-    res_ = pwrite(fd, buf+writebytes, size, _offset);
+    res = pwrite(fd, buf+writebytes, blocksize, ofst);
 	writebytes += res;
     if (res == -1)
       res = -errno;
@@ -435,7 +453,9 @@ static int xmp_write(const char *path, const char *buf, size_t size,
     close(fd);
 	
 	if(i%2 == 1)
-		_offset += 512;
+		ofst += 512;
+    i++;
+
   }
 
   return writebytes;
