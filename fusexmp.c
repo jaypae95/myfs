@@ -411,30 +411,34 @@ static int xmp_write(const char *path, const char *buf, size_t size,
   char fullpaths[2][PATH_MAX];
   int fd;
   int res;
+  int writebytes = 0;
+  int blocksize = 0;
 
   (void) fi;
 
   sprintf(fullpaths[0], "%s%s", global_context.driveA, path);
   sprintf(fullpaths[1], "%s%s", global_context.driveB, path);
 
-  for (int i = 0; i < 2; ++i) {
+  for (int written = size, int i = 0; written > 0; written = blocksize, i++) {
+	written  < 512 ? (blocksize = written) : (blocksize = 512)
     const char* fullpath = fullpaths[i];
 
     fd = open(fullpath, O_WRONLY);
     if (fd == -1)
       return -errno;
 
-    res = pwrite(fd, buf, size, offset);
+    res_ = pwrite(fd, buf+writebytes, size, _offset);
+	writebytes += res;
     if (res == -1)
       res = -errno;
-    else if(res == 0) {
-	  close(fd);
-	  break;
-	}
+
     close(fd);
+	
+	if(i%2 == 1)
+		_offset += 512;
   }
 
-  return res;
+  return writebytes;
 }
 
 static int xmp_statfs(const char *path, struct statvfs *stbuf)
